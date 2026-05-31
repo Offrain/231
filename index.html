@@ -152,38 +152,32 @@ window.login = async function () {
 
     const deviceId = getDeviceId();
 
+    // 👤 если пользователя нет в базе — создаём и привязываем устройство
     if (!snap.exists()) {
       await setDoc(ref, {
         email,
         deviceId,
-        switchCount: 0,
         blocked: false
       });
-    } else {
-      const data = snap.data();
 
-      // 🔥 смена устройства
-      if (data.deviceId && data.deviceId !== deviceId) {
-        let newCount = (data.switchCount || 0) + 1;
-
-        await updateDoc(ref, {
-          deviceId,
-          switchCount: newCount
-        });
-
-        if (newCount >= 3) {
-          await updateDoc(ref, { blocked: true });
-          await signOut(auth);
-          setMsg("BLOCKED (3 device changes)");
-          return;
-        }
-      } else {
-        await updateDoc(ref, {
-          deviceId,
-          blocked: false
-        });
-      }
+      setMsg("Первый вход OK");
+      return;
     }
+
+    const data = snap.data();
+
+    // 🚫 ЕСЛИ УЖЕ ЕСТЬ ДРУГОЕ УСТРОЙСТВО → ЗАПРЕТ
+    if (data.deviceId && data.deviceId !== deviceId) {
+      await signOut(auth);
+      setMsg("❌ Вход запрещён: аккаунт привязан к другому устройству");
+      return;
+    }
+
+    // ✅ нормальный вход
+    await updateDoc(ref, {
+      deviceId,
+      blocked: false
+    });
 
     setMsg("OK кірді");
 
@@ -192,31 +186,29 @@ window.login = async function () {
   }
 };
 
-window.logout = async function () {
-  await signOut(auth);
-};
-
 /* ================= SESSION CHECK ================= */
 onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    document.getElementById("auth").style.display = "block";
-    document.getElementById("app").style.display = "none";
-    return;
-  }
+  if (!user) return hideApp();
 
   const ref = doc(db, "users", user.email);
   const snap = await getDoc(ref);
 
-  if (snap.exists() && snap.data().blocked) {
+  if (!snap.exists()) {
     await signOut(auth);
-    alert("BLOCKED USER");
     return;
   }
 
-  document.getElementById("auth").style.display = "none";
-  document.getElementById("app").style.display = "block";
+  const data = snap.data();
+  const deviceId = getDeviceId();
 
-  loadTest();
+  // 🚫 если устройство не совпадает → выкинуть
+  if (data.deviceId !== deviceId) {
+    await signOut(auth);
+    alert("Этот аккаунт уже используется на другом устройстве");
+    return;
+  }
+
+  showApp();
 });
 
 /* ================= HELPERS ================= */
