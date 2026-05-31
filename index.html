@@ -115,26 +115,76 @@ window.login = async function () {
 
   try {
     await signInWithEmailAndPassword(auth, email, pass);
-    setMsg("OK кірді");
+
+    const ref = doc(db, "users", email);
+    const snap = await getDoc(ref);
+
+    const deviceId = getDeviceId();
+
+    // если юзер новый
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        email,
+        deviceId,
+        sessionActive: true
+      });
+      return;
+    }
+
+    const data = snap.data();
+
+    // 🔥 ЕСЛИ ДРУГОЕ УСТРОЙСТВО
+    if (data.deviceId && data.deviceId !== deviceId) {
+
+      // сброс старой сессии
+      await updateDoc(ref, {
+        deviceId: deviceId,
+        sessionActive: true
+      });
+
+      setMsg("Сессия сброшена (новое устройство)");
+    }
+
+    // если то же устройство
+    else {
+      await updateDoc(ref, {
+        sessionActive: true
+      });
+
+      setMsg("OK вход");
+    }
+
   } catch (e) {
     setMsg(e.message);
   }
 };
 
-window.logout = async function () {
-  await signOut(auth);
-};
-
 /* ================= SHOW / HIDE ================= */
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    document.getElementById("auth").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    loadTest();
-  } else {
-    document.getElementById("auth").style.display = "block";
-    document.getElementById("app").style.display = "none";
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    hideApp();
+    return;
   }
+
+  const ref = doc(db, "users", user.email);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    await signOut(auth);
+    return;
+  }
+
+  const data = snap.data();
+  const deviceId = getDeviceId();
+
+  // ❌ если устройство не совпадает → разлогин
+  if (data.deviceId !== deviceId) {
+    await signOut(auth);
+    alert("Сессия сброшена (другое устройство)");
+    return;
+  }
+
+  showApp();
 });
 
 /* ================= YOUR TEST CODE ================= */
